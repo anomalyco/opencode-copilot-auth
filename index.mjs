@@ -4,9 +4,9 @@
 export async function CopilotAuthPlugin({ client }) {
   const CLIENT_ID = "Iv1.b507a08c87ecfe98";
   const HEADERS = {
-    "User-Agent": "GitHubCopilotChat/0.32.4",
-    "Editor-Version": "vscode/1.105.1",
-    "Editor-Plugin-Version": "copilot-chat/0.32.4",
+    "User-Agent": "GitHubCopilotChat/0.35.0",
+    "Editor-Version": "vscode/1.107.0",
+    "Editor-Plugin-Version": "copilot-chat/0.35.0",
     "Copilot-Integration-Id": "vscode-chat",
   };
   const RESPONSES_API_ALTERNATE_INPUT_TYPES = [
@@ -102,7 +102,7 @@ export async function CopilotAuthPlugin({ client }) {
                   type: "oauth",
                   refresh: info.refresh,
                   access: tokenData.token,
-                  expires: tokenData.expires_at * 1000,
+                  expires: tokenData.expires_at * 1000 - 5 * 60 * 1000,
                   ...(info.enterpriseUrl && {
                     enterpriseUrl: info.enterpriseUrl,
                   }),
