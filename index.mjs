@@ -65,6 +65,59 @@ export async function CopilotAuthPlugin({ client }) {
           ? `https://copilot-api.${normalizeDomain(enterpriseUrl)}`
           : "https://api.githubcopilot.com";
 
+        // Helper function to refresh the Copilot API token
+        async function refreshCopilotToken(authInfo) {
+          const domain = authInfo.enterpriseUrl
+            ? normalizeDomain(authInfo.enterpriseUrl)
+            : "github.com";
+          const urls = getUrls(domain);
+
+          const response = await fetch(urls.COPILOT_API_KEY_URL, {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${authInfo.refresh}`,
+              ...HEADERS,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Token refresh failed: ${response.status}`);
+          }
+
+          const tokenData = await response.json();
+
+          const saveProviderID = authInfo.enterpriseUrl
+            ? "github-copilot-enterprise"
+            : "github-copilot";
+          await client.auth.set({
+            path: {
+              id: saveProviderID,
+            },
+            body: {
+              type: "oauth",
+              refresh: authInfo.refresh,
+              access: tokenData.token,
+              expires: tokenData.expires_at * 1000 - 5 * 60 * 1000,
+              ...(authInfo.enterpriseUrl && {
+                enterpriseUrl: authInfo.enterpriseUrl,
+              }),
+            },
+          });
+
+          return tokenData.token;
+        }
+
+        // Eager load: If token is missing or expired, refresh it NOW during plugin initialization
+        // This prevents the "Too Many Requests" error on the first request after switching providers
+        if (!info.access || info.expires < Date.now()) {
+          try {
+            info.access = await refreshCopilotToken(info);
+          } catch (e) {
+            // If eager loading fails, we'll retry on first request (fallback to lazy loading)
+            console.warn("Eager token loading failed, will retry on first request:", e.message);
+          }
+        }
+
         return {
           baseURL,
           apiKey: "",
@@ -72,43 +125,7 @@ export async function CopilotAuthPlugin({ client }) {
             const info = await getAuth();
             if (info.type !== "oauth") return {};
             if (!info.access || info.expires < Date.now()) {
-              const domain = info.enterpriseUrl
-                ? normalizeDomain(info.enterpriseUrl)
-                : "github.com";
-              const urls = getUrls(domain);
-
-              const response = await fetch(urls.COPILOT_API_KEY_URL, {
-                headers: {
-                  Accept: "application/json",
-                  Authorization: `Bearer ${info.refresh}`,
-                  ...HEADERS,
-                },
-              });
-
-              if (!response.ok) {
-                throw new Error(`Token refresh failed: ${response.status}`);
-              }
-
-              const tokenData = await response.json();
-
-              const saveProviderID = info.enterpriseUrl
-                ? "github-copilot-enterprise"
-                : "github-copilot";
-              await client.auth.set({
-                path: {
-                  id: saveProviderID,
-                },
-                body: {
-                  type: "oauth",
-                  refresh: info.refresh,
-                  access: tokenData.token,
-                  expires: tokenData.expires_at * 1000 - 5 * 60 * 1000,
-                  ...(info.enterpriseUrl && {
-                    enterpriseUrl: info.enterpriseUrl,
-                  }),
-                },
-              });
-              info.access = tokenData.token;
+              info.access = await refreshCopilotToken(info);
             }
             let isAgentCall = false;
             let isVisionRequest = false;
